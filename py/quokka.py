@@ -201,16 +201,63 @@ class QuokkaDisplay(drivers.SSD1306_SPI):
     buf = bytearray(self.pages * self.width)
     self._virtual_fb = framebuf.FrameBuffer(buf, self.width, self.height, framebuf.MONO_VLSB)
     self._virtual_fb.fill(0)
+    self._text_x = 0
+    self._text_y = 0
 
-  def large_text(self, text, top_x, top_y, scale=4):
-    self._virtual_fb.fill(0)
-    self._virtual_fb.text(text, 0, 0, 1)
-    for x in range(self.width // scale):
-        for y in range(self.height // scale):
-            #self.pixel(scale * x, scale * y, self._virtual_fb.pixel(x,y)) 
-            self.fill_rect(top_x + scale * x, top_y + scale * y, scale, scale, self._virtual_fb.pixel(x, y))
+
+  def print(self, text, colour=1):
+      self._wrap(text, colour, self._text_x, self._text_y)
+      self.show()
+
+  def _wrap(self, text, colour,
+         startx=0,starty=0,
+         charWidth=8,
+         charHeight=8):
+    startx, starty = self._text_x, self._text_y
+    rows = []
+    numchars=self.width//charWidth
+    pad = startx//charWidth*' '
+    #print(repr(pad))
+    pointer = len(pad)-1
+    
+    while text:
+        endpoint = numchars-len(pad)
+        needend = endpoint<len(text)
+        row = pad+text[:endpoint if needend else None]
+        rows.append(row)
+        print("Writing row: ", row)
+        self.text(row, len(pad) * 8, charHeight * (len(rows)-1)+starty, colour)
+        pad=""
+        text = text[endpoint:]
+    self._text_x = (len(rows[-1])*charWidth)%self.width
+    self._text_y = starty+len(rows)*charHeight
+            
+
+ 
+  def clear(self):
+    self._text_x, self._text_y = (0, 0)
+    self.fill(0)
     self.show()
 
+  def text(self, text, x, y, colour, scale=1):
+      self.large_text(text, x, y, colour, scale)
+
+  def large_text(self, text, top_x, top_y, colour, scale=4):
+    bg_colour = (colour + 1) % 2
+    self._virtual_fb.fill(bg_colour)
+    self._virtual_fb.text(text, 0, 0, colour)
+    
+    # we use a temporary framebuffer so we can take advantage of the blit method
+    # to keep the background colour transparent
+    buf = bytearray(self.pages * self.width)
+    temp_fb = framebuf.FrameBuffer(buf, self.width, self.height, framebuf.MONO_VLSB)
+
+    for x in range(self.width // scale):
+      for y in range(self.height // scale):
+        temp_fb.fill_rect(top_x + scale * x, top_y + scale * y, 
+                scale, scale, self._virtual_fb.pixel(x, y))
+        
+    self.blit(temp_fb, 0, 0, bg_colour) 
 
 display = QuokkaDisplay(_internal_spi)
 
